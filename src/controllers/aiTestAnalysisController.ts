@@ -290,7 +290,7 @@ IMPORTANT GUIDELINES:
           }
 
           const analysisPromise = genAI.models.generateContent({
-            model: 'gemini-1.5-pro',
+            model: 'gemini-1.5-flash',
             contents: [
               {
                 parts: contentParts
@@ -316,7 +316,7 @@ IMPORTANT GUIDELINES:
               const textOnlyPrompt = analysisPrompt + `\n\n--- Extracted Text from PDF ---\n${extractedText}\n\nNote: Analysis based on text content only (image processing failed). Please provide a comprehensive analysis based on the text content above.`;
 
               const textOnlyAnalysis = await genAI.models.generateContent({
-                model: 'gemini-1.5-pro',
+                model: 'gemini-1.5-flash',
                 contents: [
                   {
                     parts: [{ text: textOnlyPrompt }]

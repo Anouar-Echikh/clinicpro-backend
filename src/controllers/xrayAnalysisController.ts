@@ -139,7 +139,7 @@ export class XrayAnalysisController {
           console.log(`Gemini API attempt ${attempt}/${maxRetries}...`);
 
           const analysisPromise = genAI.models.generateContent({
-            model: 'gemini-1.5-pro',
+            model: 'gemini-1.5-flash',
             contents: [
               {
                 parts: [
