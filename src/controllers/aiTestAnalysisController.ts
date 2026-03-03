@@ -46,7 +46,7 @@ export const upload = multer({
 
 
 export class AITestAnalysisController {
-  
+
   /**
    * Upload and analyze test report using AI
    */
@@ -55,7 +55,7 @@ export class AITestAnalysisController {
     console.log('User:', req.user?._id, 'Role:', req.user?.role);
     console.log('Request body keys:', Object.keys(req.body));
     console.log('File present:', !!req.file);
-    
+
     try {
       const { patient_id, custom_prompt } = req.body;
       const file = req.file;
@@ -141,7 +141,7 @@ IMPORTANT GUIDELINES:
 - Return ONLY the JSON object, no additional text or formatting`;
 
       // Always merge custom prompt with default prompt
-      const analysisPrompt = custom_prompt && custom_prompt.trim() 
+      const analysisPrompt = custom_prompt && custom_prompt.trim()
         ? `${defaultPrompt}\n\n--- Additional Custom Instructions ---\n${custom_prompt}`
         : defaultPrompt;
 
@@ -158,20 +158,20 @@ IMPORTANT GUIDELINES:
 
       if (file.mimetype === 'application/pdf') {
         console.log('Processing PDF file...');
-        
+
         try {
           // Extract text from PDF
           const pdfBuffer = fs.readFileSync(file.path);
           const pdfData = await pdf(pdfBuffer);
           extractedText = pdfData.text;
           const numPages = pdfData.numpages || 1;
-          
+
           console.log('Extracted text length:', extractedText.length);
           console.log(`PDF has ${numPages} page(s), converting...`);
 
           // Convert PDF to images using pdf2pic
           const outputDir = path.dirname(file.path);
-          
+
           const pdf2picOptions = {
             density: 150,           // Higher resolution for better quality
             saveFilename: "page",   // Output filename format  
@@ -183,35 +183,35 @@ IMPORTANT GUIDELINES:
 
           console.log('Converting PDF to images...');
           const convert = fromPath(file.path, pdf2picOptions);
-          
+
           // Limit pages for Gemini API compatibility (max 5 pages)
           const maxPages = Math.min(numPages, 5);
           console.log(`Processing first ${maxPages} pages for AI analysis...`);
-          
+
           // Convert pages (limited to avoid Gemini API limits)
           for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
             try {
               const result = await convert(pageNum, { responseType: "buffer" });
-              
+
               if (result.buffer) {
                 // Validate image size (max 4MB per image for Gemini)
                 const imageSizeKB = result.buffer.length / 1024;
                 console.log(`Page ${pageNum} image size: ${imageSizeKB.toFixed(2)}KB`);
-                
+
                 if (imageSizeKB > 4000) { // 4MB limit
                   console.log(`Page ${pageNum} too large (${imageSizeKB.toFixed(2)}KB), skipping...`);
                   continue;
                 }
-                
+
                 const imageBase64 = result.buffer.toString('base64');
-                
+
                 imageParts.push({
                   inlineData: {
                     data: imageBase64,
                     mimeType: 'image/png'
                   }
                 });
-                
+
                 console.log(`Converted page ${pageNum}/${maxPages}`);
               }
             } catch (pageError: any) {
@@ -221,7 +221,7 @@ IMPORTANT GUIDELINES:
           }
 
           console.log(`Successfully converted ${imageParts.length} page(s) to images`);
-          
+
           // If no images could be processed, continue with text-only analysis
           if (imageParts.length === 0) {
             console.log('No images could be processed, continuing with text-only analysis...');
@@ -250,7 +250,7 @@ IMPORTANT GUIDELINES:
       console.log('Starting Gemini AI analysis...');
       console.log('Number of images to analyze:', imageParts.length);
       console.log('Extracted text length:', extractedText.length);
-      
+
       // Enhance the prompt based on available data
       let enhancedPrompt = analysisPrompt;
       if (extractedText && extractedText.trim()) {
@@ -262,25 +262,25 @@ IMPORTANT GUIDELINES:
       } else if (imageParts.length === 0) {
         throw new Error('No analyzable content found - neither text nor images could be extracted from the PDF');
       }
-      
-      const timeoutPromise = new Promise((_, reject) => 
+
+      const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Gemini API request timed out after 5 minutes')), 5 * 60 * 1000)
       );
-      
+
       // Retry logic for Gemini API call
       let result;
       let lastError;
       const maxRetries = 3;
-      
+
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
           console.log(`Gemini API attempt ${attempt}/${maxRetries}...`);
-          
+
           // Build content parts - text only or text + images
           const contentParts = [
             { text: enhancedPrompt }
           ];
-          
+
           // Add images only if available
           if (imageParts.length > 0) {
             contentParts.push(...imageParts);
@@ -288,68 +288,68 @@ IMPORTANT GUIDELINES:
           } else {
             console.log('Sending text-only analysis to Gemini');
           }
-          
+
           const analysisPromise = genAI.models.generateContent({
-            model: 'gemini-2.5-pro-preview-05-06',
+            model: 'gemini-1.5-pro',
             contents: [
               {
                 parts: contentParts
               }
             ]
           });
-          
+
           result = await Promise.race([analysisPromise, timeoutPromise]) as any;
           console.log(`Gemini API attempt ${attempt} succeeded`);
           break;
-          
+
         } catch (error: any) {
           console.error(`Gemini API attempt ${attempt} failed:`, error.message);
           lastError = error;
-          
+
           // If this is an image processing error and we have text, try text-only on final attempt
-          if (attempt === maxRetries && imageParts.length > 0 && extractedText && extractedText.trim() && 
-              (error.message.includes('Unable to process input image') || error.message.includes('INVALID_ARGUMENT'))) {
+          if (attempt === maxRetries && imageParts.length > 0 && extractedText && extractedText.trim() &&
+            (error.message.includes('Unable to process input image') || error.message.includes('INVALID_ARGUMENT'))) {
             console.log('Image processing failed, attempting text-only analysis as fallback...');
-            
+
             try {
               // Retry with text-only analysis
               const textOnlyPrompt = analysisPrompt + `\n\n--- Extracted Text from PDF ---\n${extractedText}\n\nNote: Analysis based on text content only (image processing failed). Please provide a comprehensive analysis based on the text content above.`;
-              
+
               const textOnlyAnalysis = await genAI.models.generateContent({
-                model: 'gemini-2.5-pro-preview-05-06',
+                model: 'gemini-1.5-pro',
                 contents: [
                   {
                     parts: [{ text: textOnlyPrompt }]
                   }
                 ]
               });
-              
+
               result = textOnlyAnalysis;
               console.log('Text-only analysis succeeded as fallback');
               break;
-              
+
             } catch (textOnlyError: any) {
               console.error('Text-only fallback also failed:', textOnlyError.message);
               throw error; // Throw original error
             }
           }
-          
+
           if (attempt === maxRetries) {
             throw error;
           }
-          
+
           // Wait before retry (exponential backoff)
           const delayMs = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
           console.log(`Retrying in ${delayMs}ms...`);
           await new Promise(resolve => setTimeout(resolve, delayMs));
         }
       }
-      
+
       console.log('Gemini API analysis completed successfully');
-      
+
       // Extract text from response with proper error handling
       let analysisText = '';
-      
+
       try {
         // Try different ways to extract the text from the response
         if (result && result.text) {
@@ -367,7 +367,7 @@ IMPORTANT GUIDELINES:
         console.error('Error extracting text from result:', textError);
         throw new Error('Failed to extract text from Gemini response: ' + (textError?.message || String(textError)));
       }
-      
+
       if (!analysisText || analysisText.trim() === '') {
         console.error('Failed to extract analysis text. Full response:', JSON.stringify(result, null, 2));
         throw new Error('Gemini returned empty or invalid analysis result. Please check the API key and model availability.');
@@ -408,7 +408,7 @@ IMPORTANT GUIDELINES:
     } catch (error: any) {
       console.error('Test report analysis error:', error);
       console.error('Error stack:', error.stack);
-      
+
       // Clean up uploaded file if analysis fails
       if (req.file && fs.existsSync(req.file.path)) {
         fs.unlinkSync(req.file.path);
@@ -417,7 +417,7 @@ IMPORTANT GUIDELINES:
       // Provide more detailed error information
       let errorMessage = 'Failed to analyze test report';
       let statusCode = 500;
-      
+
       if (error.message) {
         if (error.message.includes('GEMINI_API_KEY')) {
           errorMessage = 'Gemini API key is not configured properly';
@@ -460,7 +460,7 @@ IMPORTANT GUIDELINES:
   static async getAnalysisById(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      
+
       const analysis = await AITestAnalysis.findOne({
         _id: id,
         clinic_id: req.clinic_id
@@ -503,9 +503,9 @@ IMPORTANT GUIDELINES:
 
       // Build filter query
       const filter: any = { clinic_id: req.clinic_id };
-      
+
       if (status) filter.status = status;
-      
+
       if (search) {
         const searchTerm = search as string;
         filter.$or = [
@@ -513,7 +513,7 @@ IMPORTANT GUIDELINES:
           { analysis_result: { $regex: searchTerm, $options: 'i' } }
         ];
       }
-      
+
       if (date_from || date_to) {
         filter.analysis_date = {};
         if (date_from) filter.analysis_date.$gte = new Date(date_from as string);
@@ -556,12 +556,12 @@ IMPORTANT GUIDELINES:
   static async deleteAnalysis(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      
+
       const analysis = await AITestAnalysis.findOne({
         _id: id,
         clinic_id: req.clinic_id
       });
-      
+
       if (!analysis) {
         res.status(404).json({
           success: false,
@@ -600,7 +600,7 @@ IMPORTANT GUIDELINES:
   static async getAnalysisStats(req: AuthRequest, res: Response): Promise<void> {
     try {
       const filter = { clinic_id: req.clinic_id };
-      
+
       const totalAnalyses = await AITestAnalysis.countDocuments(filter);
       const completedAnalyses = await AITestAnalysis.countDocuments({ ...filter, status: 'completed' });
       const processingAnalyses = await AITestAnalysis.countDocuments({ ...filter, status: 'processing' });
@@ -664,25 +664,25 @@ IMPORTANT GUIDELINES:
     try {
       console.log('Parsing JSON analysis response...');
       console.log('Raw response length:', analysisText.length);
-      
+
       // Clean the response text - remove any markdown code blocks or extra formatting
       let cleanedText = analysisText.trim();
-      
+
       // Remove markdown code blocks if present
       cleanedText = cleanedText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-      
+
       // Remove any leading/trailing whitespace
       cleanedText = cleanedText.trim();
-      
+
       console.log('Cleaned response for parsing:', cleanedText.substring(0, 200) + '...');
-      
+
       // Parse the JSON response
       const jsonResponse = JSON.parse(cleanedText);
-      
+
       console.log('Successfully parsed JSON response');
       console.log('Test name:', jsonResponse.test_identification?.test_name);
       console.log('Number of test results:', jsonResponse.test_results?.length || 0);
-      
+
       // Transform the JSON structure to match our database schema
       const structuredData = {
         test_name: jsonResponse.test_identification?.test_name || '',
@@ -693,24 +693,24 @@ IMPORTANT GUIDELINES:
         recommendations: jsonResponse.recommendations || [],
         patient_summary: jsonResponse.patient_summary || {},
         // Legacy fields for backward compatibility
-        test_values: jsonResponse.test_results?.map(result => 
+        test_values: jsonResponse.test_results?.map(result =>
           `${result.parameter}: ${result.value} (Ref: ${result.reference_range})`
         ) || [],
         reference_ranges: jsonResponse.test_results?.map(result => result.reference_range) || [],
         interpretation: jsonResponse.clinical_interpretation?.summary || ''
       };
-      
+
       console.log('Structured data created successfully');
       return structuredData;
-      
+
     } catch (error: any) {
       console.error('Error parsing JSON structured data:', error.message);
       console.log('Attempting fallback text parsing...');
-      
+
       // Fallback to text parsing if JSON parsing fails
       try {
         const text = analysisText;
-        
+
         // Extract test type
         const testTypeMatch = text.match(/\*\*Test Type\*\*:\s*(.+?)(?:\n|\*\*|$)/i);
         const testName = testTypeMatch ? testTypeMatch[1].trim() : '';

@@ -43,7 +43,7 @@ export const upload = multer({
 });
 
 export class XrayAnalysisController {
-  
+
   /**
    * Upload and analyze X-ray image
    */
@@ -52,7 +52,7 @@ export class XrayAnalysisController {
     console.log('User:', req.user?._id, 'Role:', req.user?.role);
     console.log('Request body keys:', Object.keys(req.body));
     console.log('File present:', !!req.file);
-    
+
     try {
       const { patient_id, custom_prompt } = req.body;
       const file = req.file;
@@ -79,7 +79,7 @@ export class XrayAnalysisController {
       console.log('Custom prompt length:', custom_prompt?.length || 0);
 
       // Default prompt if none provided
-             const defaultPrompt = `You are an expert dental radiologist. Analyze the uploaded dental X-ray image. Based on the visual details, provide the following:
+      const defaultPrompt = `You are an expert dental radiologist. Analyze the uploaded dental X-ray image. Based on the visual details, provide the following:
  
  1. A short summary of the condition of the teeth shown in the X-ray (e.g., decay, infection, root condition, bone loss, fillings, etc.)
  2. Identify any problematic areas (e.g., tooth number and the issue).
@@ -97,7 +97,7 @@ export class XrayAnalysisController {
  `;
 
       // Always merge custom prompt with default prompt
-      const analysisPrompt = custom_prompt && custom_prompt.trim() 
+      const analysisPrompt = custom_prompt && custom_prompt.trim()
         ? `${defaultPrompt}\n\n--- Additional Custom Instructions ---\n${custom_prompt}`
         : defaultPrompt;
 
@@ -124,22 +124,22 @@ export class XrayAnalysisController {
       console.log('Starting Gemini AI analysis...');
       console.log('Image size:', imageBuffer.length, 'bytes');
       console.log('Image type:', file.mimetype);
-      
-      const timeoutPromise = new Promise((_, reject) => 
+
+      const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Gemini API request timed out after 5 minutes')), 5 * 60 * 1000)
       );
-      
+
       // Retry logic for Gemini API call
       let result;
       let lastError;
       const maxRetries = 3;
-      
+
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
           console.log(`Gemini API attempt ${attempt}/${maxRetries}...`);
-          
+
           const analysisPromise = genAI.models.generateContent({
-            model: 'gemini-2.5-pro-preview-05-06',
+            model: 'gemini-1.5-pro',
             contents: [
               {
                 parts: [
@@ -149,32 +149,32 @@ export class XrayAnalysisController {
               }
             ]
           });
-          
+
           result = await Promise.race([analysisPromise, timeoutPromise]) as any;
           console.log(`Gemini API attempt ${attempt} succeeded`);
           break;
-          
+
         } catch (error: any) {
           console.error(`Gemini API attempt ${attempt} failed:`, error.message);
           lastError = error;
-          
+
           if (attempt === maxRetries) {
             throw error;
           }
-          
+
           // Wait before retry (exponential backoff)
           const delayMs = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
           console.log(`Retrying in ${delayMs}ms...`);
           await new Promise(resolve => setTimeout(resolve, delayMs));
         }
       }
-      
+
       console.log('Gemini API analysis completed successfully');
       console.log('Gemini API Response:', JSON.stringify(result, null, 2));
-      
+
       // Extract text from response with proper error handling
       let analysisText = '';
-      
+
       try {
         // Try different ways to extract the text from the response
         if (result && result.text) {
@@ -192,7 +192,7 @@ export class XrayAnalysisController {
         console.error('Error extracting text from result:', textError);
         throw new Error('Failed to extract text from Gemini response: ' + (textError?.message || String(textError)));
       }
-      
+
       if (!analysisText || analysisText.trim() === '') {
         console.error('Failed to extract analysis text. Full response:', JSON.stringify(result, null, 2));
         throw new Error('Gemini returned empty or invalid analysis result. Please check the API key and model availability.');
@@ -234,7 +234,7 @@ export class XrayAnalysisController {
     } catch (error: any) {
       console.error('X-ray analysis error:', error);
       console.error('Error stack:', error.stack);
-      
+
       // Clean up uploaded file if analysis fails
       if (req.file && fs.existsSync(req.file.path)) {
         fs.unlinkSync(req.file.path);
@@ -243,7 +243,7 @@ export class XrayAnalysisController {
       // Provide more detailed error information
       let errorMessage = 'Failed to analyze X-ray';
       let statusCode = 500;
-      
+
       if (error.message) {
         if (error.message.includes('GEMINI_API_KEY')) {
           errorMessage = 'Gemini API key is not configured properly';
@@ -286,7 +286,7 @@ export class XrayAnalysisController {
   static async getAnalysisById(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      
+
       const analysis = await XrayAnalysis.findById(id)
         .populate('patient_id', 'first_name last_name date_of_birth')
         .populate('doctor_id', 'first_name last_name specialization');
@@ -408,7 +408,7 @@ export class XrayAnalysisController {
   static async deleteAnalysis(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      
+
       const analysis = await XrayAnalysis.findById(id);
       if (!analysis) {
         res.status(404).json({
@@ -504,7 +504,7 @@ export class XrayAnalysisController {
    */
   private static parseFindings(analysisText: string): any {
     const text = analysisText.toLowerCase();
-    
+
     return {
       cavities: text.includes('cavity') || text.includes('cavities') || text.includes('decay'),
       wisdom_teeth: text.includes('wisdom') ? 'Present in analysis' : '',

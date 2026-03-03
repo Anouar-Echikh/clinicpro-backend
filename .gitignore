@@ -16,6 +16,7 @@ out/
 .env.test
 .env.production
 .env.staging
+.env.coolify
 
 # Logs
 logs/
