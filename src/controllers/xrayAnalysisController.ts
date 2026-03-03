@@ -106,7 +106,10 @@ export class XrayAnalysisController {
       if (!apiKey) {
         throw new Error('GEMINI_API_KEY environment variable is required');
       }
-      const genAI = new GoogleGenAI({ apiKey: apiKey as string });
+      const genAI = new GoogleGenAI({
+        apiKey: apiKey as string,
+        apiVersion: 'v1'
+      });
 
       // Read the uploaded file
       const imageBuffer = fs.readFileSync(file.path);

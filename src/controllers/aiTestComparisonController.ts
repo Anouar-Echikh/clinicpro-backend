@@ -42,13 +42,13 @@ export const uploadMultiple = multer({
 });
 
 export class AITestComparisonController {
-  
+
   /**
    * Compare multiple test reports using AI
    */
   public static async compareTestReports(req: AuthRequest, res: Response) {
     const startTime = Date.now();
-    
+
     try {
       const { patient_id, comparison_name, custom_prompt } = req.body;
       const files = req.files as Express.Multer.File[];
@@ -197,7 +197,7 @@ export class AITestComparisonController {
 
     } catch (error: any) {
       console.error('Async processing error:', error);
-      
+
       try {
         const comparison = await AITestComparison.findById(comparisonId);
         if (comparison) {
@@ -239,7 +239,7 @@ export class AITestComparisonController {
 
         try {
           const convertedImages = await fromPath(file.path, pdf2picOptions);
-          
+
           if (Array.isArray(convertedImages)) {
             const maxPages = Math.min(convertedImages.length, 5);
             for (let i = 0; i < maxPages; i++) {
@@ -273,7 +273,7 @@ export class AITestComparisonController {
 
       // Analyze with Gemini AI
       const analysisResult = await AITestComparisonController.analyzeWithGemini(textContent, imageBuffers, customPrompt);
-      
+
       // Parse the structured data
       const structuredData = AITestComparisonController.parseStructuredData(analysisResult);
 
@@ -312,7 +312,10 @@ export class AITestComparisonController {
       throw new Error('Gemini API key not configured');
     }
 
-    const genAI = new GoogleGenAI({ apiKey: apiKey as string });
+    const genAI = new GoogleGenAI({
+      apiKey: apiKey as string,
+      apiVersion: 'v1'
+    });
     const prompt = customPrompt || AITestComparisonController.getDefaultPrompt();
 
     try {
@@ -348,7 +351,7 @@ export class AITestComparisonController {
           }
         ]
       });
-      
+
       if (result && result.candidates && result.candidates.length > 0) {
         const candidate = result.candidates[0];
         if (candidate && candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
@@ -358,12 +361,12 @@ export class AITestComparisonController {
           }
         }
       }
-      
+
       throw new Error('No valid response from Gemini AI');
 
     } catch (error: any) {
       console.error('Gemini AI error:', error);
-      
+
       // Fallback to text-only analysis if image processing fails
       if (textContent.trim() && imageBuffers.length > 0) {
         console.log('Retrying with text-only analysis...');
@@ -380,7 +383,7 @@ export class AITestComparisonController {
               }
             ]
           });
-          
+
           if (result && result.candidates && result.candidates.length > 0) {
             const candidate = result.candidates[0];
             if (candidate && candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
@@ -390,13 +393,13 @@ export class AITestComparisonController {
               }
             }
           }
-          
+
           throw new Error('No valid response from text-only analysis');
         } catch (textError) {
           console.error('Text-only analysis also failed:', textError);
         }
       }
-      
+
       throw error;
     }
   }
@@ -412,7 +415,7 @@ export class AITestComparisonController {
       if (analysis.test_results) {
         analysis.test_results.forEach((result: any) => {
           const paramKey = result.parameter.toLowerCase().trim();
-          
+
           if (!parameterMap.has(paramKey)) {
             parameterMap.set(paramKey, {
               parameter: result.parameter,
@@ -503,21 +506,21 @@ export class AITestComparisonController {
 
     if (Math.abs(percentChange) > 20) {
       trend = percentChange > 0 ? 'increasing' : 'decreasing';
-      
+
       // Check if trend is concerning based on parameter type and direction
-      if (parameter.toLowerCase().includes('cholesterol') || 
-          parameter.toLowerCase().includes('glucose') ||
-          parameter.toLowerCase().includes('pressure')) {
+      if (parameter.toLowerCase().includes('cholesterol') ||
+        parameter.toLowerCase().includes('glucose') ||
+        parameter.toLowerCase().includes('pressure')) {
         is_concerning = percentChange > 0;
       } else if (parameter.toLowerCase().includes('hemoglobin') ||
-                 parameter.toLowerCase().includes('rbc')) {
+        parameter.toLowerCase().includes('rbc')) {
         is_concerning = Math.abs(percentChange) > 15;
       }
     } else if (numericValues.length > 2) {
       // Check for fluctuation
       const variations: number[] = [];
       for (let i = 1; i < numericValues.length; i++) {
-        variations.push(Math.abs((numericValues[i] - numericValues[i-1]) / numericValues[i-1]) * 100);
+        variations.push(Math.abs((numericValues[i] - numericValues[i - 1]) / numericValues[i - 1]) * 100);
       }
       const avgVariation = variations.reduce((a, b) => a + b, 0) / variations.length;
       if (avgVariation > 15) {
@@ -527,8 +530,8 @@ export class AITestComparisonController {
     }
 
     const analysis = `${parameter} shows a ${trend} pattern over time. ` +
-                    `Change from first to last: ${percentChange.toFixed(1)}%. ` +
-                    `Values range: ${Math.min(...numericValues)} to ${Math.max(...numericValues)}.`;
+      `Change from first to last: ${percentChange.toFixed(1)}%. ` +
+      `Values range: ${Math.min(...numericValues)} to ${Math.max(...numericValues)}.`;
 
     return {
       trend,
@@ -543,7 +546,7 @@ export class AITestComparisonController {
    */
   private static async generateComparisonAnalysis(individualAnalyses: any[], parameterComparisons: any[]): Promise<any> {
     const concerningParams = parameterComparisons.filter(p => p.is_concerning).map(p => p.parameter);
-    const improvingParams = parameterComparisons.filter(p => p.trend === 'decreasing' && 
+    const improvingParams = parameterComparisons.filter(p => p.trend === 'decreasing' &&
       (p.parameter.toLowerCase().includes('cholesterol') || p.parameter.toLowerCase().includes('glucose'))).map(p => p.parameter);
     const stableParams = parameterComparisons.filter(p => p.trend === 'stable').map(p => p.parameter);
 
@@ -553,7 +556,7 @@ export class AITestComparisonController {
       .slice(0, 5);
 
     return {
-      overall_trend: concerningParams.length > improvingParams.length + stableParams.length ? 
+      overall_trend: concerningParams.length > improvingParams.length + stableParams.length ?
         'Some concerning changes noted' : 'Generally stable with some variations',
       key_changes: keyChanges,
       concerning_parameters: concerningParams,
@@ -574,7 +577,7 @@ export class AITestComparisonController {
         }
       ],
       patient_summary: {
-        overall_status: concerningParams.length === 0 ? 
+        overall_status: concerningParams.length === 0 ?
           'Your test results show good consistency over time' :
           'Some parameters show changes that may need attention',
         main_findings: `Compared ${individualAnalyses.length} test reports. ${concerningParams.length} parameters need attention, ${stableParams.length} are stable.`,
@@ -592,10 +595,10 @@ export class AITestComparisonController {
       let cleanedText = analysisText.trim();
       cleanedText = cleanedText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
       cleanedText = cleanedText.trim();
-      
+
       // Parse the JSON response
       const jsonResponse = JSON.parse(cleanedText);
-      
+
       return {
         test_name: jsonResponse.test_identification?.test_name || '',
         test_category: jsonResponse.test_identification?.test_category || '',
@@ -603,10 +606,10 @@ export class AITestComparisonController {
         abnormal_findings: jsonResponse.abnormal_findings || [],
         clinical_interpretation: jsonResponse.clinical_interpretation || {}
       };
-      
+
     } catch (error: any) {
       console.error('Error parsing JSON structured data:', error.message);
-      
+
       // Fallback to text parsing if JSON parsing fails
       const fallbackData: any = {
         test_name: 'Parsed from text',
@@ -619,7 +622,7 @@ export class AITestComparisonController {
       // Try to extract some basic info from text
       const lines = analysisText.split('\n');
       const testResults: any[] = [];
-      
+
       lines.forEach(line => {
         // Look for patterns like "Parameter: Value (Range)"
         const match = line.match(/(.+?):\s*(.+?)\s*\((.+?)\)/);
