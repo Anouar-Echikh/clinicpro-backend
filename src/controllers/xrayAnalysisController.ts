@@ -169,14 +169,14 @@ export class XrayAnalysisController {
       let analysisText = '';
 
       try {
-        // Try different ways to extract the text from the response
-        if (result && result.text) {
-          analysisText = result.text;
+        // In @google/generative-ai SDK, response.text() is a METHOD, not a property
+        if (result && typeof result.text === 'function') {
+          analysisText = result.text();
         } else if (result && result.candidates && result.candidates.length > 0) {
           const candidate = result.candidates[0];
           if (candidate && candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
             const part = candidate.content.parts[0];
-            if (part && part.text) {
+            if (part && typeof part.text === 'string') {
               analysisText = part.text;
             }
           }
