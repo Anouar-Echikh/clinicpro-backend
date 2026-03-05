@@ -97,6 +97,9 @@ async function initializeServer() {
     // Public routes (no authentication required)
     app.use('/public', publicRoutes);
 
+    // Serve static files from uploads directory (fallback for locally stored files)
+    app.use('/uploads', express.static('uploads'));
+
     // API routes
     app.use('/api', routes);
 
@@ -134,7 +137,7 @@ async function initializeServer() {
     // Global error handler
     app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
       console.error('Error:', err);
-      
+
       // Mongoose validation error
       if (err.name === 'ValidationError') {
         const errors = Object.values(err.errors).map((e: any) => e.message);

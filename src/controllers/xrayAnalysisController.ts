@@ -6,24 +6,13 @@ import fs from 'fs';
 import XrayAnalysis from '../models/XrayAnalysis';
 import { AuthRequest } from '../types/express';
 import { addTenantToData } from '../middleware/auth';
+import { S3Service } from '../utils/s3';
 
 // NOTE: Add GEMINI_API_KEY to your .env file
 // GEMINI_API_KEY=your-gemini-api-key-here
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadPath = './uploads/xrays';
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true });
-    }
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, `xray-${uniqueSuffix}${path.extname(file.originalname)}`);
-  }
-});
+// Use memory storage so we can upload to S3 AND read the buffer for Gemini
+const storage = multer.memoryStorage();
 
 const fileFilter = (req: any, file: Express.Multer.File, cb: any) => {
   const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
@@ -109,8 +98,8 @@ export class XrayAnalysisController {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
-      // Read the uploaded file
-      const imageBuffer = fs.readFileSync(file.path);
+      // Read the uploaded file from memory buffer (multer memoryStorage)
+      const imageBuffer = file.buffer;
       const imageBase64 = imageBuffer.toString('base64');
 
       // Prepare the image for Gemini
@@ -194,13 +183,22 @@ export class XrayAnalysisController {
       // Parse findings from the analysis (basic implementation)
       const findings = XrayAnalysisController.parseFindings(analysisText);
 
+      // Upload image to S3 for persistent public URL
+      let imageUrl = `/uploads/xrays/${file.originalname}`; // fallback
+      try {
+        imageUrl = await S3Service.uploadFile(file, 'xrays');
+        console.log('X-ray uploaded to S3:', imageUrl);
+      } catch (s3Error: any) {
+        console.error('S3 upload failed, image URL may not be accessible:', s3Error.message);
+      }
+
       // Save analysis to database
       const xrayAnalysisData = addTenantToData(req, {
         clinic_id: req.clinic_id,
         patient_id,
         doctor_id: req.user?._id,
-        image_url: `/uploads/xrays/${file.filename}`,
-        image_filename: file.filename,
+        image_url: imageUrl,
+        image_filename: file.originalname,
         custom_prompt: custom_prompt || '',
         analysis_result: analysisText,
         status: 'completed',
@@ -227,10 +225,7 @@ export class XrayAnalysisController {
       console.error('X-ray analysis error:', error);
       console.error('Error stack:', error.stack);
 
-      // Clean up uploaded file if analysis fails
-      if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
+      // No local file to clean up since we use multer memory storage
 
       // Provide more detailed error information
       let errorMessage = 'Failed to analyze X-ray';
