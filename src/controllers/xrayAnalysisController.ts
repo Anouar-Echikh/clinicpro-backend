@@ -107,7 +107,7 @@ export class XrayAnalysisController {
         throw new Error('GEMINI_API_KEY environment variable is required');
       }
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
       // Read the uploaded file
       const imageBuffer = fs.readFileSync(file.path);
