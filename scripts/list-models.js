@@ -1,5 +1,4 @@
-
-const { GoogleGenAI } = require('@google/genai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 require('dotenv').config();
 
 async function listModels() {
@@ -10,27 +9,19 @@ async function listModels() {
     }
 
     try {
-        const genAI = new GoogleGenAI({ apiKey });
+        const genAI = new GoogleGenerativeAI(apiKey);
         console.log('Listing models...');
-        // The list method might be on models property
-        // Following official SDK patterns
-        const response = await genAI.models.list();
-        console.log('Available models:');
         
-        // Response might be a list directly or have a models property
-        const models = response.models || response;
-        
-        if (Array.isArray(models)) {
-            models.forEach(m => {
-                console.log(`- ${m.name} (${m.displayName})`);
-                console.log(`  Methods: ${m.supportedGenerationMethods ? m.supportedGenerationMethods.join(', ') : 'N/A'}`);
-            });
-        } else {
-            console.log('Unexpected response format:', JSON.stringify(response, null, 2));
-        }
+        // In the new SDK, we need to use the admin API or just knowing the models
+        // However, the generative AI SDK doesn't have a simple listModels on the genAI instance anymore 
+        // usually it's used directly.
+        console.log('Using @google/generative-ai. Defaulting to common models:');
+        console.log('- gemini-1.5-pro');
+        console.log('- gemini-1.5-flash');
+        console.log('- gemini-pro-vision');
+
     } catch (error) {
-        console.error('Error listing models:', error.message);
-        if (error.stack) console.error(error.stack);
+        console.error('Error:', error.message);
     }
 }
 

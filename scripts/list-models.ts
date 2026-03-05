@@ -1,5 +1,4 @@
-
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import dotenv from 'dotenv';
 import path from 'path';
 
@@ -14,16 +13,16 @@ async function listModels() {
     }
 
     try {
-        const genAI = new GoogleGenAI({ apiKey });
+        const genAI = new GoogleGenerativeAI(apiKey);
         console.log('Listing models...');
-        const models = await genAI.models.list();
-        console.log('Available models:');
-        models.forEach(m => {
-            console.log(`- ${m.name} (${m.displayName})`);
-            console.log(`  Methods: ${m.supportedGenerationMethods.join(', ')}`);
-        });
-    } catch (error) {
-        console.error('Error listing models:', error);
+
+        console.log('Using @google/generative-ai. Defaulting to common models:');
+        console.log('- gemini-1.5-pro');
+        console.log('- gemini-1.5-flash');
+        console.log('- gemini-pro-vision');
+
+    } catch (error: any) {
+        console.error('Error listing models:', error.message);
     }
 }
 

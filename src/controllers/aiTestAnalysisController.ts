@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -150,10 +150,8 @@ IMPORTANT GUIDELINES:
       if (!apiKey) {
         throw new Error('GEMINI_API_KEY environment variable is required');
       }
-      const genAI = new GoogleGenAI({
-        apiKey: apiKey as string,
-        apiVersion: 'v1'
-      });
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
 
       // Process the uploaded file (image or PDF)
       let imageParts: any[] = [];
@@ -292,16 +290,10 @@ IMPORTANT GUIDELINES:
             console.log('Sending text-only analysis to Gemini');
           }
 
-          const analysisPromise = genAI.models.generateContent({
-            model: 'gemini-1.5-flash',
-            contents: [
-              {
-                parts: contentParts
-              }
-            ]
-          });
-
-          result = await Promise.race([analysisPromise, timeoutPromise]) as any;
+          const resultObj = await model.generateContent([
+            ...contentParts
+          ]);
+          result = resultObj.response;
           console.log(`Gemini API attempt ${attempt} succeeded`);
           break;
 
@@ -318,16 +310,11 @@ IMPORTANT GUIDELINES:
               // Retry with text-only analysis
               const textOnlyPrompt = analysisPrompt + `\n\n--- Extracted Text from PDF ---\n${extractedText}\n\nNote: Analysis based on text content only (image processing failed). Please provide a comprehensive analysis based on the text content above.`;
 
-              const textOnlyAnalysis = await genAI.models.generateContent({
-                model: 'gemini-1.5-flash',
-                contents: [
-                  {
-                    parts: [{ text: textOnlyPrompt }]
-                  }
-                ]
-              });
+              const textOnlyAnalysis = await model.generateContent([
+                textOnlyPrompt
+              ]);
 
-              result = textOnlyAnalysis;
+              result = textOnlyAnalysis.response;
               console.log('Text-only analysis succeeded as fallback');
               break;
 
@@ -396,16 +383,15 @@ IMPORTANT GUIDELINES:
 
       await aiTestAnalysis.save();
 
+      // Fetch populated analysis for frontend display
+      const populatedAnalysis = await AITestAnalysis.findById(aiTestAnalysis._id)
+        .populate('patient_id', 'first_name last_name date_of_birth')
+        .populate('doctor_id', 'first_name last_name specialization');
+
       res.status(200).json({
         success: true,
         message: 'Test report analysis completed successfully',
-        data: {
-          id: aiTestAnalysis._id,
-          analysis_result: analysisText,
-          structured_data: structuredData,
-          file_url: aiTestAnalysis.file_url,
-          analysis_date: aiTestAnalysis.analysis_date
-        }
+        data: populatedAnalysis
       });
 
     } catch (error: any) {

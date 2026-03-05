@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -312,10 +312,8 @@ export class AITestComparisonController {
       throw new Error('Gemini API key not configured');
     }
 
-    const genAI = new GoogleGenAI({
-      apiKey: apiKey as string,
-      apiVersion: 'v1'
-    });
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
     const prompt = customPrompt || AITestComparisonController.getDefaultPrompt();
 
     try {
@@ -342,27 +340,8 @@ export class AITestComparisonController {
         throw new Error('No content to analyze (no text or images)');
       }
 
-      const result = await genAI.models.generateContent({
-        model: 'gemini-1.5-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: parts
-          }
-        ]
-      });
-
-      if (result && result.candidates && result.candidates.length > 0) {
-        const candidate = result.candidates[0];
-        if (candidate && candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
-          const part = candidate.content.parts[0];
-          if (part && part.text) {
-            return part.text;
-          }
-        }
-      }
-
-      throw new Error('No valid response from Gemini AI');
+      const result = await model.generateContent(parts);
+      return result.response.text();
 
     } catch (error: any) {
       console.error('Gemini AI error:', error);
@@ -371,30 +350,11 @@ export class AITestComparisonController {
       if (textContent.trim() && imageBuffers.length > 0) {
         console.log('Retrying with text-only analysis...');
         try {
-          const result = await genAI.models.generateContent({
-            model: 'gemini-1.5-flash',
-            contents: [
-              {
-                role: 'user',
-                parts: [
-                  { text: prompt },
-                  { text: `Extracted Text Content: ${textContent}` }
-                ]
-              }
-            ]
-          });
-
-          if (result && result.candidates && result.candidates.length > 0) {
-            const candidate = result.candidates[0];
-            if (candidate && candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
-              const part = candidate.content.parts[0];
-              if (part && part.text) {
-                return part.text;
-              }
-            }
-          }
-
-          throw new Error('No valid response from text-only analysis');
+          const result = await model.generateContent([
+            prompt,
+            `Extracted Text Content: ${textContent}`
+          ]);
+          return result.response.text();
         } catch (textError) {
           console.error('Text-only analysis also failed:', textError);
         }

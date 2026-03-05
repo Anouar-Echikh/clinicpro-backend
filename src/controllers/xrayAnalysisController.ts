@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -106,10 +106,8 @@ export class XrayAnalysisController {
       if (!apiKey) {
         throw new Error('GEMINI_API_KEY environment variable is required');
       }
-      const genAI = new GoogleGenAI({
-        apiKey: apiKey as string,
-        apiVersion: 'v1'
-      });
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
 
       // Read the uploaded file
       const imageBuffer = fs.readFileSync(file.path);
@@ -141,19 +139,11 @@ export class XrayAnalysisController {
         try {
           console.log(`Gemini API attempt ${attempt}/${maxRetries}...`);
 
-          const analysisPromise = genAI.models.generateContent({
-            model: 'gemini-1.5-flash',
-            contents: [
-              {
-                parts: [
-                  { text: analysisPrompt },
-                  imagePart
-                ]
-              }
-            ]
-          });
-
-          result = await Promise.race([analysisPromise, timeoutPromise]) as any;
+          const resultObj = await model.generateContent([
+            analysisPrompt,
+            imagePart
+          ]);
+          result = resultObj.response;
           console.log(`Gemini API attempt ${attempt} succeeded`);
           break;
 
@@ -222,16 +212,15 @@ export class XrayAnalysisController {
 
       await xrayAnalysis.save();
 
+      // Fetch populated analysis for frontend display
+      const populatedAnalysis = await XrayAnalysis.findById(xrayAnalysis._id)
+        .populate('patient_id', 'first_name last_name date_of_birth')
+        .populate('doctor_id', 'first_name last_name specialization');
+
       res.status(200).json({
         success: true,
         message: 'X-ray analysis completed successfully',
-        data: {
-          id: xrayAnalysis._id,
-          analysis_result: analysisText,
-          findings,
-          image_url: xrayAnalysis.image_url,
-          analysis_date: xrayAnalysis.analysis_date
-        }
+        data: populatedAnalysis
       });
 
     } catch (error: any) {
@@ -322,18 +311,23 @@ export class XrayAnalysisController {
    */
   static async getPatientAnalyses(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const { patient_id } = req.params;
+      const { patientId } = req.params;
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 10;
       const skip = (page - 1) * limit;
 
-      const analyses = await XrayAnalysis.find({ patient_id })
+      const filter = {
+        patient_id: patientId,
+        clinic_id: req.clinic_id
+      };
+
+      const analyses = await XrayAnalysis.find(filter)
         .populate('doctor_id', 'first_name last_name specialization')
         .sort({ analysis_date: -1 })
         .skip(skip)
         .limit(limit);
 
-      const total = await XrayAnalysis.countDocuments({ patient_id });
+      const total = await XrayAnalysis.countDocuments(filter);
 
       res.status(200).json({
         success: true,
@@ -366,8 +360,8 @@ export class XrayAnalysisController {
       const skip = (page - 1) * limit;
       const { status, date_from, date_to } = req.query;
 
-      // Build filter query
-      const filter: any = {};
+      // Build filter query with multi-tenancy support
+      const filter: any = { clinic_id: req.clinic_id };
       if (status) filter.status = status;
       if (date_from || date_to) {
         filter.analysis_date = {};
@@ -450,21 +444,24 @@ export class XrayAnalysisController {
    */
   static async getAnalysisStats(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const totalAnalyses = await XrayAnalysis.countDocuments();
-      const completedAnalyses = await XrayAnalysis.countDocuments({ status: 'completed' });
-      const pendingAnalyses = await XrayAnalysis.countDocuments({ status: 'pending' });
-      const failedAnalyses = await XrayAnalysis.countDocuments({ status: 'failed' });
+      const filter = { clinic_id: req.clinic_id };
+
+      const totalAnalyses = await XrayAnalysis.countDocuments(filter);
+      const completedAnalyses = await XrayAnalysis.countDocuments({ ...filter, status: 'completed' });
+      const pendingAnalyses = await XrayAnalysis.countDocuments({ ...filter, status: 'pending' });
+      const failedAnalyses = await XrayAnalysis.countDocuments({ ...filter, status: 'failed' });
 
       // Get analyses from last 30 days
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const recentAnalyses = await XrayAnalysis.countDocuments({
+        ...filter,
         analysis_date: { $gte: thirtyDaysAgo }
       });
 
       // Get most common findings
       const findingsStats = await XrayAnalysis.aggregate([
-        { $match: { status: 'completed' } },
+        { $match: { ...filter, status: 'completed' } },
         {
           $group: {
             _id: null,
