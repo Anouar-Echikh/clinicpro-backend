@@ -183,13 +183,15 @@ export class XrayAnalysisController {
       // Parse findings from the analysis (basic implementation)
       const findings = XrayAnalysisController.parseFindings(analysisText);
 
-      // Upload image to S3 for persistent public URL
-      let imageUrl = `/uploads/xrays/${file.originalname}`; // fallback
+      // Build image URL — try S3 first, fall back to a base64 data URL stored in DB
+      let imageUrl: string;
       try {
         imageUrl = await S3Service.uploadFile(file, 'xrays');
         console.log('X-ray uploaded to S3:', imageUrl);
       } catch (s3Error: any) {
-        console.error('S3 upload failed, image URL may not be accessible:', s3Error.message);
+        console.warn('S3 upload failed, storing image as base64 data URL:', s3Error.message);
+        // Store the image inline as a data URL — always accessible, no external dependency
+        imageUrl = `data:${file.mimetype};base64,${imageBase64}`;
       }
 
       // Save analysis to database
